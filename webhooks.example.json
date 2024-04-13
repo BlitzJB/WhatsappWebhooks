@@ -1,0 +1,9 @@
+[
+    {
+        "id": "webhook1",
+        "chatId": "123123123123@g.us",
+        "urlPath": "/webhook1",
+        "friendlyName": "Webhook 1",
+        "authToken": "secret token here"
+    }
+]
