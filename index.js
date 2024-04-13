@@ -16,7 +16,7 @@ const client = new Client({
 });
 
 client.on('qr', (qr) => {
-    console.log('QR RECEIVED', qr);
+    qrcode.generate(qr);
 });
 
 client.on('ready', () => {
@@ -73,5 +73,3 @@ app.listen(3000, () => {
 })
 
 client.initialize();
-
-qrcode.generate("2@UKlokcy4f31SVEq9Lef1zIdswoLoU1NmboreATHPbHuWUj2l0N3/XiQD2PM3Vb4BtQDDLzGJGyJlfQ==,u5QtvQgDo2jF5uCxGgAZPPvmlun6usYyuDzwI1damGY=,ZCbRituPLpYMTKL9FZQcoSqK9EUj4+QUfTULsvu0lDE=,ijPjeN1NEBcBSdPZjm0rxPfTH0QFMQvdXDrgunVsk60=,1")
