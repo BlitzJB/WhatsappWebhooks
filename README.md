@@ -1,4 +1,7 @@
-# WhatsappWebhooks
+
+<p align="center">
+  <img src="https://github.com/BlitzJB/WhatsappWebhooks/assets/88381529/5335a7a1-b299-4630-923b-abc81ae5298e" alt="Banner Image" />
+</p>
 WhatsappWebhooks is a selfhostable webhook server for whatsapp. Bring your own account, Authenticate like how you'd link any device, and configure webhooks for any whatsapp chat or group chat you'd like!
 
 # Setup
