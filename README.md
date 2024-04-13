@@ -17,7 +17,7 @@ WhatsappWebhooks is a selfhostable webhook server for whatsapp. Bring your own a
     ```
 
 # Running
-1. Define `webhooks.json` as shown in `webhooks.example.json`.
+1. Define `webhooks.json` as shown in `webhooks.example.json`. To find the chatId of the chat/group you'd like to configure your webhook for, find `chatIds.json` generated after the initial run, and get the serialized_id of the corresponding chat.
 
 2. You will have to authenticate your whatsapp on the first run. Scan the QR code that appears on the terminal.
 
