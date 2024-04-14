@@ -16,12 +16,13 @@ const client = new Client({
 });
 
 client.on('qr', (qr) => {
+    console.log("[WHATSAPP CLIENT] Generating QR Code")
     qrcode.generate(qr);
 });
 
 client.on('ready', () => {
     console.log('[WHATSAPP CLIENT] Client ready');
-    saveAllChatIds('chatIds.json')
+    saveAllChatIds('./chatIds.json')
 });
 
 client.on('message', msg => {
@@ -31,9 +32,11 @@ client.on('message', msg => {
 });
 
 function saveAllChatIds(fname) {
+    console.log("[WHATSAPP CLIENT] Fetching chatIds")
     const groups = client.getChats().then((chats) => {
         const chatIds = chats.map(chat => ({...chat.id, name: chat.name, isGroup: chat.isGroup, contactId: chat.contactId}));
         fs.writeFileSync(fname, JSON.stringify(chatIds));
+        console.log("[WHATSAPP CLIENT] chatIds written to ", fname)
     })
 }
 
@@ -72,4 +75,5 @@ app.listen(3000, () => {
     console.log('[EXPRESS] Server running on port 3000');
 })
 
+console.log("[WHATSAPP CLIENT] Initializing client")
 client.initialize();
