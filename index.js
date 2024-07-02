@@ -1,9 +1,14 @@
-import wwebjs from 'whatsapp-web.js';
-import fs from 'fs';
+import pgk from 'whatsapp-web.js';
+const { Client, LocalAuth, MessageMedia } = pgk;
+import fs from 'fs/promises';
 import express from 'express';
 import qrcode from 'qrcode-terminal';
+import axios from 'axios';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-const { Client, LocalAuth } = wwebjs;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const client = new Client({
     webVersionCache: {
@@ -11,69 +16,146 @@ const client = new Client({
         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2410.1.html',
     },
     authStrategy: new LocalAuth({
-        dataPath: './',
+        dataPath: join(__dirname, '.wwebjs_auth'),
     }),
 });
 
 client.on('qr', (qr) => {
-    console.log("[WHATSAPP CLIENT] Generating QR Code")
-    qrcode.generate(qr);
+    console.log("[WHATSAPP CLIENT] Generating QR Code");
+    qrcode.generate(qr, { small: true });
 });
 
 client.on('ready', () => {
     console.log('[WHATSAPP CLIENT] Client ready');
-    saveAllChatIds('./chatIds.json')
+});
+
+client.on("auth_failure", () => {
+    console.log("[WHATSAPP CLIENT] Authentication failure");
 });
 
 client.on('message', msg => {
-    if (msg.body == '!status') {
+    if (msg.body === '!status') {
         msg.reply('alive');
     }
 });
 
-function saveAllChatIds(fname) {
-    console.log("[WHATSAPP CLIENT] Fetching chatIds")
-    const groups = client.getChats().then((chats) => {
-        const chatIds = chats.map(chat => ({...chat.id, name: chat.name, isGroup: chat.isGroup, contactId: chat.contactId}));
-        fs.writeFileSync(fname, JSON.stringify(chatIds));
-        console.log("[WHATSAPP CLIENT] chatIds written to ", fname)
-    })
-}
-
-
-const webhooks = JSON.parse(fs.readFileSync('webhooks.json'));
-
-function sendMessage(req, res) {
-    const { webhookId } = req.params;
-    const { message, authToken } = req.body;
-    const webhook = webhooks.find(webhook => webhook.id === webhookId);
-    if (!webhook) {
-        console.error('Webhook not found');
-        res.status(404).json({ error: 'Webhook not found' });
-        return;
+async function saveAllChatIds(fname) {
+    try {
+        console.log("[WHATSAPP CLIENT] Fetching chatIds");
+        const chats = await client.getChats();
+        const chatIds = chats.map(chat => ({
+            id: chat.id._serialized,
+            name: chat.name,
+            isGroup: chat.isGroup,
+            contactId: chat.contactId
+        }));
+        await fs.writeFile(fname, JSON.stringify(chatIds, null, 2));
+        console.log("[WHATSAPP CLIENT] chatIds written to", fname);
+    } catch (err) {
+        console.error("[WHATSAPP CLIENT] Error saving chat IDs:", err);
     }
-    if (authToken !== webhook.authToken) {
-        console.error('Invalid authToken');
-        res.status(401).json({ error: 'Invalid authToken' });
-        return;
-    }
-    client.getChatById(webhook.chatId).then(chat => {
-        chat.sendMessage(message);
-        res.status(200).json({ success: true });
-    });
 }
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.post('/webhook/:webhookId', (req, res) => {
-    sendMessage(req, res)
-})
+// Middleware for webhook authentication
+const authenticateWebhook = async (req, res, next) => {
+    const { webhookId } = req.params;
+    const { authToken } = req.body;
 
-app.listen(3000, () => {
-    console.log('[EXPRESS] Server running on port 3000');
-})
+    try {
+        const webhooksData = await fs.readFile('webhooks.json', 'utf-8');
+        const webhooks = JSON.parse(webhooksData);
+        const webhook = webhooks.find(w => w.id === webhookId);
 
-console.log("[WHATSAPP CLIENT] Initializing client")
+        if (!webhook) {
+            return res.status(404).json({ error: 'Webhook not found' });
+        }
+        if (authToken !== webhook.authToken) {
+            return res.status(401).json({ error: 'Invalid authToken' });
+        }
+
+        req.webhook = webhook;
+        next();
+    } catch (error) {
+        console.error('Error authenticating webhook:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+app.post('/webhook/:webhookId', authenticateWebhook, async (req, res) => {
+    const { message } = req.body;
+    const { chatId } = req.webhook;
+
+    try {
+        const chat = await client.getChatById(chatId);
+        await chat.sendMessage(message);
+        res.status(200).json({ success: true });
+    } catch (error) {
+        console.error('Error sending message:', error);
+        res.status(500).json({ error: 'Failed to send message' });
+    }
+});
+
+app.get('/id/:phoneNumber', async (req, res) => {
+    const { phoneNumber } = req.params;
+    try {
+        const numberId = await client.getNumberId(phoneNumber);
+        if (numberId) {
+            res.json({ id: numberId._serialized });
+        } else {
+            res.status(404).json({ error: 'Phone number not found' });
+        }
+    } catch (error) {
+        console.error('Error getting ID by phone number:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.get('/group/:groupName', async (req, res) => {
+    const { groupName } = req.params;
+    try {
+        const chats = await client.getChats();
+        const group = chats.find(chat => chat.isGroup && chat.name === groupName);
+        if (group) {
+            res.json({ id: group.id._serialized });
+        } else {
+            res.status(404).json({ error: 'Group not found' });
+        }
+    } catch (error) {
+        console.error('Error getting group ID:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/send', async (req, res) => {
+    const { id, message, attachmentUrl, attachmentName } = req.body;
+    try {
+        const chat = await client.getChatById(id);
+        if (attachmentUrl) {
+            const response = await axios.get(attachmentUrl, { responseType: 'arraybuffer' });
+            const media = new MessageMedia(
+                response.headers['content-type'],
+                response.data.toString('base64'),
+                attachmentName ?? 'attachment'
+            );
+            await chat.sendMessage(message, { media });
+        } else {
+            await chat.sendMessage(message);
+        }
+        res.status(200).json({ success: true });
+    } catch (error) {
+        console.error('Error sending message:', error);
+        res.status(500).json({ error: 'Failed to send message' });
+    }
+});
+
+const PORT = process.env.PORT || 3005;
+app.listen(PORT, () => {
+    console.log(`[EXPRESS] Server running on port ${PORT}`);
+});
+
+console.log("[WHATSAPP CLIENT] Initializing client");
 client.initialize();
